@@ -56,13 +56,13 @@ export const lambdaOacStackProperty: LambdaOacStackProperty = {
   },
   props: {
     hostedZone: {
-      zoneName: "lambda-url.non-97.net",
+      zoneName: "generate-pdf.www.non-97.net",
     },
     certificate: {
-      certificateDomainName: "lambda-url.non-97.net",
+      certificateDomainName: "generate-pdf.www.non-97.net",
     },
     contentsDelivery: {
-      domainName: "lambda-url.non-97.net",
+      domainName: "generate-pdf.www.non-97.net",
     },
     allowDeleteBucketAndObjects: true,
     cloudFrontAccessLog: {

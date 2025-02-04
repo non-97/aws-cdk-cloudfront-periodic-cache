@@ -5,7 +5,7 @@ import { LambdaOacStack } from "../lib/lambda-oac-stack";
 import { lambdaOacStackProperty } from "../parameter/index";
 
 const app = new cdk.App();
-new LambdaOacStack(app, "LambdaOacStack", {
+new LambdaOacStack(app, "CloudfrontPeriodicCacheStack", {
   env: lambdaOacStackProperty.env,
   ...lambdaOacStackProperty.props,
 });

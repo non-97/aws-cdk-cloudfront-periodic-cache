@@ -30,86 +30,86 @@ export class ContentsDeliveryConstruct extends Construct {
     super(scope, id);
 
     // Lambda Function
-    const wasshoiLambda = new cdk.aws_lambda_nodejs.NodejsFunction(
+    const messagePdfLambda = new cdk.aws_lambda_nodejs.NodejsFunction(
       this,
-      "WasshoiLambda",
+      "MessagePdfLambda",
       {
-        entry: path.join(__dirname, "../src/lambda/wasshoi/index.ts"),
-        runtime: cdk.aws_lambda.Runtime.NODEJS_20_X,
+        entry: path.join(__dirname, "../src/lambda/message-pdf/index.ts"),
+        runtime: cdk.aws_lambda.Runtime.NODEJS_22_X,
         bundling: {
           minify: true,
           tsconfig: path.join(__dirname, "../src/lambda/tsconfig.json"),
           format: cdk.aws_lambda_nodejs.OutputFormat.ESM,
+          mainFields: ["module", "main"],
+          banner:
+            "const require = (await import('node:module')).createRequire(import.meta.url);const __filename = (await import('node:url')).fileURLToPath(import.meta.url);const __dirname = (await import('node:path')).dirname(__filename);",
         },
         architecture: cdk.aws_lambda.Architecture.ARM_64,
         loggingFormat: cdk.aws_lambda.LoggingFormat.JSON,
+        timeout: cdk.Duration.seconds(30),
+      }
+    );
+
+    // CloudFront Functions
+    const datetimeBlockCf2 = new cdk.aws_cloudfront.Function(
+      this,
+      "DatetimeBlockCf2",
+      {
+        code: cdk.aws_cloudfront.FunctionCode.fromFile({
+          filePath: path.join(__dirname, "../src/cf2/datetime-block/index.js"),
+        }),
+        runtime: cdk.aws_cloudfront.FunctionRuntime.JS_2_0,
       }
     );
 
     // CloudFront Distribution
     this.distribution = new cdk.aws_cloudfront.Distribution(this, "Default", {
       defaultBehavior: {
-        origin: new cdk.aws_cloudfront_origins.FunctionUrlOrigin(
-          wasshoiLambda.addFunctionUrl({
-            authType: cdk.aws_lambda.FunctionUrlAuthType.AWS_IAM,
-          })
-        ),
+        origin:
+          cdk.aws_cloudfront_origins.FunctionUrlOrigin.withOriginAccessControl(
+            messagePdfLambda.addFunctionUrl({
+              authType: cdk.aws_lambda.FunctionUrlAuthType.AWS_IAM,
+            })
+          ),
         allowedMethods: cdk.aws_cloudfront.AllowedMethods.ALLOW_GET_HEAD,
         cachedMethods: cdk.aws_cloudfront.CachedMethods.CACHE_GET_HEAD,
-        cachePolicy: new cdk.aws_cloudfront.CachePolicy(this, "WasshoiCache", {
-          minTtl: cdk.Duration.seconds(1),
-          maxTtl: cdk.Duration.seconds(31536000),
-          defaultTtl: cdk.Duration.seconds(86400),
-          enableAcceptEncodingBrotli: true,
-          enableAcceptEncodingGzip: true,
-          queryStringBehavior:
-            cdk.aws_cloudfront.CacheQueryStringBehavior.allowList("wasshoi"),
-        }),
+        cachePolicy: new cdk.aws_cloudfront.CachePolicy(
+          this,
+          "MessageCachePolicy",
+          {
+            minTtl: cdk.Duration.seconds(1),
+            maxTtl: cdk.Duration.days(1),
+            defaultTtl: cdk.Duration.hours(12),
+            enableAcceptEncodingBrotli: true,
+            enableAcceptEncodingGzip: true,
+            queryStringBehavior:
+              cdk.aws_cloudfront.CacheQueryStringBehavior.allowList("message"),
+            headerBehavior:
+              cdk.aws_cloudfront.CacheHeaderBehavior.allowList(
+                "x-datetime-block"
+              ),
+            cookieBehavior: cdk.aws_cloudfront.CacheCookieBehavior.none(),
+          }
+        ),
         viewerProtocolPolicy:
           cdk.aws_cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         responseHeadersPolicy:
           cdk.aws_cloudfront.ResponseHeadersPolicy.SECURITY_HEADERS,
+        functionAssociations: [
+          {
+            function: datetimeBlockCf2,
+            eventType: cdk.aws_cloudfront.FunctionEventType.VIEWER_REQUEST,
+          },
+        ],
       },
       httpVersion: cdk.aws_cloudfront.HttpVersion.HTTP2_AND_3,
-      priceClass: cdk.aws_cloudfront.PriceClass.PRICE_CLASS_200,
+      priceClass: cdk.aws_cloudfront.PriceClass.PRICE_CLASS_ALL,
       domainNames: props.domainName ? [props.domainName] : undefined,
       certificate: props.domainName
         ? props.certificateConstruct?.certificate
         : undefined,
       logBucket: props.cloudFrontAccessLogBucketConstruct?.bucket,
       logFilePrefix: props.logFilePrefix,
-    });
-
-    // OAC
-    const cfnOriginAccessControl =
-      new cdk.aws_cloudfront.CfnOriginAccessControl(
-        this,
-        "OriginAccessControl",
-        {
-          originAccessControlConfig: {
-            name: "Origin Access Control for Lambda Functions URL",
-            originAccessControlOriginType: "lambda",
-            signingBehavior: "always",
-            signingProtocol: "sigv4",
-          },
-        }
-      );
-
-    const cfnDistribution = this.distribution.node
-      .defaultChild as cdk.aws_cloudfront.CfnDistribution;
-
-    // Set OAC
-    cfnDistribution.addPropertyOverride(
-      "DistributionConfig.Origins.0.OriginAccessControlId",
-      cfnOriginAccessControl.attrId
-    );
-
-    wasshoiLambda.addPermission("AllowCloudFrontServicePrincipal", {
-      principal: new cdk.aws_iam.ServicePrincipal("cloudfront.amazonaws.com"),
-      action: "lambda:InvokeFunctionUrl",
-      sourceArn: `arn:aws:cloudfront::${
-        cdk.Stack.of(this).account
-      }:distribution/${this.distribution.distributionId}`,
     });
 
     // RRset
@@ -146,7 +146,7 @@ export class ContentsDeliveryConstruct extends Construct {
               __dirname,
               "../src/lambda/move-cloudfront-access-log/index.ts"
             ),
-            runtime: cdk.aws_lambda.Runtime.NODEJS_20_X,
+            runtime: cdk.aws_lambda.Runtime.NODEJS_22_X,
             bundling: {
               minify: true,
               tsconfig: path.join(__dirname, "../src/lambda/tsconfig.json"),
